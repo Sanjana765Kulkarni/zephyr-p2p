@@ -1,0 +1,15 @@
+{
+  "name": "kabutar-windwhisper-server",
+  "version": "1.0.0",
+  "description": "ZEPHYR-1 signalling server",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "bonjour-service": "^1.3.0"
+  }
+}
