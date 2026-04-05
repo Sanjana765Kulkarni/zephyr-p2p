@@ -17,20 +17,94 @@ The project is split into two lightweight systems:
 1. **The Signaling Server (`/server`):** A Node.js + WebSocket backend. Provides a central registry where devices announce their online presence.
 2. **The React Client (`/client`):** A Vite-powered React front-end application executing the heavy cryptographic and chunking logic.
 
+```mermaid
+graph LR
+    subgraph S[Signaling Server]
+        W[WebSocket Router]
+    end
+    
+    subgraph A[Client A]
+        UI_A[React UI] <--> Z_A[ZEPHYR Engine]
+    end
+    
+    subgraph B[Client B]
+        UI_B[React UI] <--> Z_B[ZEPHYR Engine]
+    end
+    
+    Z_A <..>|Base64 Relayed WebSockets| W
+    Z_B <..>|Base64 Relayed WebSockets| W
+    Z_A ===|End-to-End Encrypted Tunnel| Z_B
+    
+    style S fill:#1c1e21,stroke:#4a5568,stroke-width:2px,color:#fff
+    style A fill:#2d3748,stroke:#a0aec0,color:#fff
+    style B fill:#2d3748,stroke:#a0aec0,color:#fff
+    style Z_A fill:#3182ce,stroke:#2b6cb0,color:#fff
+    style Z_B fill:#3182ce,stroke:#2b6cb0,color:#fff
+```
+
 ### Cryptographic Handshake Workflow
 Instead of sending raw files over WebSockets—or implicitly trusting a TLS termination proxy—WindWhisper handles its own native encryption. Before a file transfer can begin, the two peers dynamically negotiate session keys:
-1. **HELLO / HELLO_ACK:** Both peers exchange randomly generated P-256 Elliptic Curve Public Keys over the open WebSocket. 
-2. **ECDH Key Derivation:** Using the peer's public key and their own private key, both computers independently compute the exact same Shared Secret.
-3. **HKDF Expansion:** The shared secret is passed through HKDF-SHA256 to extract a hardened `Session Key` perfectly sized for AES.
-4. **VERIFY / VERIFY_ACK:** Both peers sign a transcript of their handshake using HMAC-SHA256 to prove ownership of the keys. The keys are successfully bound, and the session is ESTABLISHED.
+
+```mermaid
+sequenceDiagram
+    participant A as Device A (Initiator)
+    participant B as Device B (Responder)
+    
+    Note over A, B: 1. Asymmetric ECDH P-256 Key Pair Generation
+    A->>B: HELLO (PubA, random bytes)
+    B->>A: HELLO_ACK (PubB, random bytes)
+    
+    Note over A, B: 2. Both mathmatically compute the EXACT same Shared Secret<br/>A computes: ECDH(PubA, PrivB)<br/>B computes: ECDH(PubB, PrivA)
+    Note over A, B: 3. HKDF-SHA256(Shared Secret) derives the 256-bit AES Session Key
+    
+    A->>B: VERIFY (HMAC-SHA256 of entire transcript)
+    B->>A: VERIFY_ACK (HMAC-SHA256 of VERIFY)
+    
+    Note over A, B: Keys verified against tampering. Session ESTABLISHED!
+```
+
+**Key Steps:**
+1. **HELLO / HELLO_ACK:** Exchange randomly generated P-256 Elliptic Curve Public Keys over the open WebSocket. 
+2. **ECDH Key Derivation:** Using the peer's public key and their own private key, independently compute the Shared Secret.
+3. **HKDF Expansion:** Extract a hardened `Session Key` perfectly sized for AES.
+4. **VERIFY / VERIFY_ACK:** Sign the transcript using HMAC-SHA256 to prove ownership of the keys.
 
 ### Transfer Workflow
 Once keys are synchronized via the Handshake, the sender slices the file into bite-sized 64 KB fragments:
-1. **META Packet:** The sender computes an overall `SHA-256` hash of the file and transmits a `META` packet containing the filename, size, chunk count, and file hash.
-2. **DATA Slicing:** The file is streamed slice-by-slice. Each 64 KB slice is prepended with its explicit `chunkIndex` identifier.
-3. **AES-GCM Authenticated Encryption:** The chunk is encrypted using the negotiated Session Key safely inside `crypto.subtle`. The GCM algorithm appends an authentication tag, mathematically blocking mid-air tampering.
-4. **Windowed Dispatch:** The sender injects up to 32 chunks into the WebSocket simultaneously (Sliding Window ARQ) and awaits tiny 52-byte unencrypted `ACK` responses.
-5. **Decryption & Reassembly:** The receiver downloads the chunks, decrypts them natively, correctly maps them via the internal `chunkIndex`, and finally validates the entire concatenated file against the initial `SHA-256` hash to guarantee pristine file transfer. 
+
+```mermaid
+sequenceDiagram
+    participant S as Sender
+    participant R as Receiver
+    
+    Note over S: Computes absolute SHA-256 hash of entire file
+    S->>R: META (filename, totalChunks, sha256hex)
+    R-->>S: ACK (seq 0)
+    
+    Note over S: File slicing initiates (64 KB fragments)
+    rect rgb(30, 40, 50)
+        Note over S: Sliding Window Pipeline [Capacity: 32 chunks]
+        S->>R: DATA (chunkIndex: 0) AES-GCM Encrypted
+        S->>R: DATA (chunkIndex: 1) AES-GCM Encrypted
+        S->>R: DATA (chunkIndex: 2) AES-GCM Encrypted
+        R-->>S: ACK (seq 1)
+        Note over S: Window advances, unlocking next queued chunk
+        S->>R: DATA (chunkIndex: 3) AES-GCM Encrypted
+        R-->>S: ACK (seq 2)
+        R-->>S: ACK (seq 3)
+    end
+    
+    Note over R: Downloads chunks, AES deciphers natively, and sequentially <br/>re-assembles them into array buffers in active memory space.
+    Note over R: Validates final unified file via original META SHA-256 <br/>to guarantee bit-for-bit uncorrupted file integrity!
+    Note over R: Triggers Native Save File / Browser Download
+```
+
+**Key Steps:**
+1. **META Packet:** Transmit a `META` packet containing the filename, size, chunk count, and SHA-256 hash.
+2. **DATA Slicing:** Stream slice-by-slice. Each 64 KB slice is prepended with its explicit `chunkIndex` identifier.
+3. **AES-GCM Authenticated Encryption:** The chunk is encrypted using the negotiated Session Key safely inside `crypto.subtle`. The GCM algorithm appends an authentication tag to mathematically block tampering.
+4. **Windowed Dispatch:** Inject up to 32 chunks into the WebSocket (Sliding Window ARQ) and gracefully suspend memory allocation until unencrypted `ACK` responses open the window.
+5. **Decryption & Reassembly:** Download, decrypt, map via `chunkIndex`, and finally validate the entire concatenated file against the `META` hash.
 
 ---
 
