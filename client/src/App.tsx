@@ -15,9 +15,17 @@ export default function App() {
   const [peerId, setPeerId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read production URL from Vite env, fallback to localhost for standard dev
-    const WS_URL = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:7473`;
-    const socket = new WebSocket(WS_URL);
+    // Read production URL from Vite env, fallback to secure wss if on https
+    const defaultProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const WS_URL = import.meta.env.VITE_WS_URL || `${defaultProto}//${window.location.hostname}:7473`;
+    
+    let socket: WebSocket;
+    try {
+        socket = new WebSocket(WS_URL);
+    } catch (err) {
+        console.error('[App] WebSocket initialization failed:', err);
+        return;
+    }
 
     socket.onopen = () => {
       const name = `Device-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
