@@ -12,7 +12,6 @@ interface MascotProps {
 
 export const Mascot: React.FC<MascotProps> = ({ mode, size = 120 }) => {
     const letterFill = mode === 'windwhisper' ? '#ffffff' : '#1a1917';
-    const letterStroke = mode === 'windwhisper' ? '#d6d3cc' : '#f5f3ee';
 
     return (
         <div className="mascot-wrapper" style={{ width: size, height: size }}>
