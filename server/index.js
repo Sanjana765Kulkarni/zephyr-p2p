@@ -5,15 +5,25 @@
  */
 
 import { WebSocketServer } from 'ws';
+import { createServer } from 'http';
+
 import { handleMessage, evictPeer, registerPeer } from './rooms.js';
 import { startMdns } from './mdns.js';
 import { randomUUID } from 'crypto';
 
 const PORT = process.env.PORT || 7473;
 
-const wss = new WebSocketServer({ port: PORT });
+// HTTP Server for basic health checks (prevents "Upgrade Required" on standard HTTP requests)
+const server = createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Zephyr Signalling Server is Online!');
+});
 
-console.log(`[ZEPHYR-1] Signalling server listening on ws://localhost:${PORT}`);
+const wss = new WebSocketServer({ server });
+
+server.listen(PORT, () => {
+    console.log(`[ZEPHYR-1] Signalling server listening on port ${PORT}`);
+});
 
 startMdns(PORT);
 
