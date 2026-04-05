@@ -15,39 +15,72 @@ export default function App() {
   const [peerId, setPeerId] = useState<string | null>(null);
 
   useEffect(() => {
-    // Read production URL from Vite env, fallback to secure wss if on https
-    const defaultProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const WS_URL = import.meta.env.VITE_WS_URL || `${defaultProto}//${window.location.hostname}:7473`;
-    
+    let reconnectTimer: ReturnType<typeof setTimeout>;
     let socket: WebSocket;
-    try {
+
+    const connectWS = () => {
+      let rawUrl = (import.meta.env.VITE_WS_URL || '') as string;
+      if (rawUrl && rawUrl.startsWith('http')) {
+        rawUrl = rawUrl.replace(/^http/, 'ws');
+      }
+      
+      // Render/cloud automatically expose apps on port 443. Strip manual :7473 declarations.
+      if (rawUrl.includes('.onrender.com:7473')) {
+        rawUrl = rawUrl.replace(':7473', '');
+      }
+
+      const defaultProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const isCloud = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
+      const fallbackUrl = isCloud 
+        ? `${defaultProto}//${window.location.hostname}` 
+        : `ws://${window.location.hostname}:7473`;
+        
+      const WS_URL = rawUrl || fallbackUrl;
+
+      try {
         socket = new WebSocket(WS_URL);
-    } catch (err) {
+      } catch (err) {
         console.error('[App] WebSocket initialization failed:', err);
         return;
-    }
+      }
 
-    socket.onopen = () => {
-      const name = `Device-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-      const deviceType = /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
-      socket.send(JSON.stringify({ type: 'HELLO', payload: { name, deviceType } }));
+      socket.onopen = () => {
+        const name = `Device-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+        const deviceType = /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
+        socket.send(JSON.stringify({ type: 'HELLO', payload: { name, deviceType } }));
+      };
+
+      const helloHandler = (evt: MessageEvent) => {
+        try {
+          const msg = JSON.parse(evt.data as string);
+          if (msg.type === 'HELLO' && msg.payload?.peerId) {
+            console.log('[App] assigned peerId:', msg.payload.peerId);
+            setPeerId(msg.payload.peerId);
+          }
+        } catch { /* ignore */ }
+      };
+
+      socket.addEventListener('message', helloHandler);
+      
+      socket.onclose = () => {
+        console.warn('[App] WebSocket disconnected. Retrying in 3 seconds...');
+        socket.removeEventListener('message', helloHandler);
+        setWs(null);
+        setPeerId(null);
+        reconnectTimer = setTimeout(connectWS, 3000);
+      };
+
+      setWs(socket);
     };
 
-    const helloHandler = (evt: MessageEvent) => {
-      try {
-        const msg = JSON.parse(evt.data as string);
-        if (msg.type === 'HELLO' && msg.payload?.peerId) {
-          console.log('[App] assigned peerId:', msg.payload.peerId);
-          setPeerId(msg.payload.peerId);
-        }
-      } catch { /* ignore */ }
-    };
-    socket.addEventListener('message', helloHandler);
+    connectWS();
 
-    setWs(socket);
     return () => {
-      socket.removeEventListener('message', helloHandler);
-      socket.close();
+      clearTimeout(reconnectTimer);
+      if (socket) {
+        socket.onclose = null; // prevent reconnect on intended unmount
+        socket.close();
+      }
     };
   }, []);
 
