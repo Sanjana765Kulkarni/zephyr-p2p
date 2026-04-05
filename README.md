@@ -31,8 +31,8 @@ graph LR
         UI_B[React UI] <--> Z_B[ZEPHYR Engine]
     end
     
-    Z_A <..>|Base64 Relayed WebSockets| W
-    Z_B <..>|Base64 Relayed WebSockets| W
+    Z_A -.->|Base64 Relayed WebSockets| W
+    Z_B -.->|Base64 Relayed WebSockets| W
     Z_A ===|End-to-End Encrypted Tunnel| Z_B
     
     style S fill:#1c1e21,stroke:#4a5568,stroke-width:2px,color:#fff
