@@ -13,12 +13,16 @@ export default function App() {
   // ── Single shared WebSocket for ALL hooks ──────────────────────────────────
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [peerId, setPeerId] = useState<string | null>(null);
+  const [deviceName, setDeviceName] = useState<string>('');
 
   useEffect(() => {
     let reconnectTimer: ReturnType<typeof setTimeout>;
     let socket: WebSocket;
 
     const connectWS = () => {
+      const generatedName = `Device-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      setDeviceName(generatedName);
+
       let rawUrl = (import.meta.env.VITE_WS_URL || '') as string;
       if (rawUrl && rawUrl.startsWith('http')) {
         rawUrl = rawUrl.replace(/^http/, 'ws');
@@ -45,9 +49,8 @@ export default function App() {
       }
 
       socket.onopen = () => {
-        const name = `Device-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
         const deviceType = /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'mobile' : 'desktop';
-        socket.send(JSON.stringify({ type: 'HELLO', payload: { name, deviceType } }));
+        socket.send(JSON.stringify({ type: 'HELLO', payload: { name: generatedName, deviceType } }));
       };
 
       const helloHandler = (evt: MessageEvent) => {
@@ -110,6 +113,9 @@ export default function App() {
           </div>
         </div>
         <div className="topbar-right">
+          <span className="topbar-devicename" style={{ marginRight: '16px', fontSize: '0.9rem', color: '#6a6a6a' }}>
+            {deviceName}
+          </span>
           <span className={`status-dot${ws && peerId ? '' : ' status-dot--offline'}`} title={peerId ? 'Connected' : 'Connecting…'} />
           <span className="status-label">{peerId ? 'online' : 'connecting…'}</span>
         </div>

@@ -62,9 +62,8 @@ export const WindWhisper: React.FC<WindWhisperProps> = ({
 
     const toggleSelect = (id: string) => {
         setSelectedIds(prev => {
-            const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
-            return next;
+            if (prev.has(id)) return new Set();
+            return new Set([id]); // Enforce STRICT 1-to-1 device selection only
         });
     };
 
