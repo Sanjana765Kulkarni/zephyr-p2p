@@ -15,7 +15,8 @@ export default function App() {
   const [peerId, setPeerId] = useState<string | null>(null);
 
   useEffect(() => {
-    const WS_URL = `ws://${window.location.hostname}:7473`;
+    // Read production URL from Vite env, fallback to localhost for standard dev
+    const WS_URL = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:7473`;
     const socket = new WebSocket(WS_URL);
 
     socket.onopen = () => {

@@ -9,7 +9,7 @@ import { handleMessage, evictPeer, registerPeer } from './rooms.js';
 import { startMdns } from './mdns.js';
 import { randomUUID } from 'crypto';
 
-const PORT = 7473;
+const PORT = process.env.PORT || 7473;
 
 const wss = new WebSocketServer({ port: PORT });
 
