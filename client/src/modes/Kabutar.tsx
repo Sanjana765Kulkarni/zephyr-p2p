@@ -106,7 +106,8 @@ export const Kabutar: React.FC<KabutarProps> = ({
                 }
                 if (msg.type === 'CODE_MATCHED') {
                     setStatus(`${msg.payload.fromName} matched your code. Connecting...`);
-                    onConnect(msg.payload.fromId);
+                    // DO NOT call onConnect here. The person who typed the code is the initiator. 
+                    // This host acts as the responder and will naturally react to the incoming HELLO packet.
                 }
             } catch { /* ignore */ }
         };
