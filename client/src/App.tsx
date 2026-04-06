@@ -4,11 +4,14 @@
  */
 import { useState, useEffect } from 'react';
 import { WindWhisper } from './modes/WindWhisper';
+import { Kabutar } from './modes/Kabutar';
 import { useZephyr } from './hooks/useZephyr';
 import { useDevices } from './hooks/useDevices';
 import { useTransfer } from './hooks/useTransfer';
 
 export default function App() {
+
+  const [activeMode, setActiveMode] = useState<'windwhisper' | 'kabutar'>('windwhisper');
 
   // ── Single shared WebSocket for ALL hooks ──────────────────────────────────
   const [ws, setWs] = useState<WebSocket | null>(null);
@@ -121,8 +124,25 @@ export default function App() {
         </div>
       </header>
 
+      {/* Tabs */}
+      <div className="tabs">
+        <button 
+          className={`tab-btn ${activeMode === 'windwhisper' ? 'tab-btn--active' : ''}`}
+          onClick={() => setActiveMode('windwhisper')}
+        >
+          WindWhisper
+        </button>
+        <button 
+          className={`tab-btn ${activeMode === 'kabutar' ? 'tab-btn--active' : ''}`}
+          onClick={() => setActiveMode('kabutar')}
+        >
+          Kabutar (TOTP Secure)
+        </button>
+      </div>
+
       {/* Mode content */}
       <main className="main-content">
+        {activeMode === 'windwhisper' ? (
           <WindWhisper
             peerId={peerId}
             devices={devices}
@@ -138,7 +158,18 @@ export default function App() {
             onRespondPermission={respond}
             incomingBlob={incomingBlob}
             incomingName={incomingName}
-        />
+          />
+        ) : (
+          <Kabutar
+            ws={ws}
+            onConnect={connect}
+            onSendFile={sendFile}
+            outgoingProgress={outgoingProgress}
+            sessionState={sessionState}
+            incomingBlob={incomingBlob}
+            incomingName={incomingName}
+          />
+        )}
       </main>
     </div>
   );
