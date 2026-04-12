@@ -119,16 +119,6 @@ export class ZephyrSession {
         this.emit('state_change', s);
     }
 
-    // ─── Nonce ────────────────────────────────────────────────────────────────
-
-    private nextNonce(): Uint8Array {
-        if (this.nonceCounter >= TRANSFER.NONCE_OVERFLOW) {
-            this.sendFin();
-            throw new Error('Nonce overflow — must re-establish session');
-        }
-        return seqToNonce(this.nonceCounter++);
-    }
-
     private get nextSeq(): number { return this.nonceCounter; }
 
     // ─── Handshake: Initiator ─────────────────────────────────────────────────
@@ -260,7 +250,7 @@ export class ZephyrSession {
             metaPayload,
         );
         this.nonceCounter++;
-        
+
         // Store meta packet for possible retransmit
         const metaTimer = setTimeout(() => this.retransmitChunk(metaSeq), TRANSFER.RETRANSMIT_TIMEOUT_MS);
         this.pendingChunks.set(metaSeq, { seq: metaSeq, type: PacketType.META, data: metaPayload, sentAt: Date.now(), timer: metaTimer });
@@ -270,9 +260,9 @@ export class ZephyrSession {
         let chunkIndex = 0;
         for await (const chunk of splitFile(file)) {
             await this.waitForWindow();
-            
+
             const seq = this.nextSeq;
-            
+
             // Prefix 4 bytes for chunk index
             const payload = new Uint8Array(4 + chunk.length);
             new DataView(payload.buffer).setUint32(0, chunkIndex, false);
@@ -392,12 +382,6 @@ export class ZephyrSession {
         this.receiverState = undefined;
         this.setState('ESTABLISHED');
         this.isTransferring = false;
-
-        // Send FIN
-        const finSeq = this.nextSeq;
-        const finNonce = this.nextNonce();
-        const finPacket = buildHandshakePacket(PacketType.FIN, finSeq, finNonce, new Uint8Array(0));
-        this.emit('packet', finPacket);
     }
 
     // ─── ACK ──────────────────────────────────────────────────────────────────
@@ -409,7 +393,7 @@ export class ZephyrSession {
         if (pending) {
             clearTimeout(pending.timer);
             this.pendingChunks.delete(seq);
-            
+
             // Advance transmission window
             if (this.windowQueue.length > 0 && this.pendingChunks.size < TRANSFER.MAX_CONCURRENT) {
                 this.windowQueue.shift()!();
@@ -460,13 +444,6 @@ export class ZephyrSession {
         const p = await encodePacket(this.sessionKeys.sessionKey, PacketType.ERR, seq, payload);
         this.nonceCounter++;
         this.emit('packet', p);
-    }
-
-    private sendFin() {
-        const nonce = seqToNonce(this.nonceCounter);
-        const p = buildHandshakePacket(PacketType.FIN, this.nonceCounter++, nonce, new Uint8Array(0));
-        this.emit('packet', p);
-        this.setState('CLOSED');
     }
 
     destroy() {
