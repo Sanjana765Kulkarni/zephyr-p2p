@@ -30,18 +30,17 @@ export default function App() {
       if (rawUrl && rawUrl.startsWith('http')) {
         rawUrl = rawUrl.replace(/^http/, 'ws');
       }
-      
-      // Render/cloud automatically expose apps on port 443. Strip manual :7473 declarations.
+
       if (rawUrl.includes('.onrender.com:7473')) {
         rawUrl = rawUrl.replace(':7473', '');
       }
 
       const defaultProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const isCloud = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-      const fallbackUrl = isCloud 
-        ? `${defaultProto}//${window.location.hostname}` 
+      const fallbackUrl = isCloud
+        ? `${defaultProto}//${window.location.hostname}`
         : `ws://${window.location.hostname}:7473`;
-        
+
       const WS_URL = rawUrl || fallbackUrl;
 
       try {
@@ -67,7 +66,7 @@ export default function App() {
       };
 
       socket.addEventListener('message', helloHandler);
-      
+
       socket.onclose = () => {
         console.warn('[App] WebSocket disconnected. Retrying in 3 seconds...');
         socket.removeEventListener('message', helloHandler);
@@ -91,12 +90,9 @@ export default function App() {
   }, []);
 
   // ── All hooks share the same ws ────────────────────────────────────────────
-  const { sessionState, connect, sendFile, incomingTransfer, outgoingProgress } = useZephyr(ws, peerId);
+  const { sessionStates, connect, sendFile, incomingTransfers, outgoingProgresses } = useZephyr(ws, peerId);
   const devices = useDevices(ws);
-  const { permissionRequest, respond, requestPermission } = useTransfer(ws);
-
-  const incomingBlob = incomingTransfer?.blob ?? null;
-  const incomingName = incomingTransfer?.meta?.name;
+  const { permissionRequests, respond, requestPermission } = useTransfer(ws);
 
   return (
     <div className="app">
@@ -126,13 +122,13 @@ export default function App() {
 
       {/* Tabs */}
       <div className="tabs">
-        <button 
+        <button
           className={`tab-btn ${activeMode === 'windwhisper' ? 'tab-btn--active' : ''}`}
           onClick={() => setActiveMode('windwhisper')}
         >
           WindWhisper
         </button>
-        <button 
+        <button
           className={`tab-btn ${activeMode === 'kabutar' ? 'tab-btn--active' : ''}`}
           onClick={() => setActiveMode('kabutar')}
         >
@@ -148,26 +144,22 @@ export default function App() {
             devices={devices}
             onConnect={connect}
             onSendFile={sendFile}
-            onRequestPermission={(targetId, fileName, fileSize, onGranted) =>
-              requestPermission(targetId, fileName, fileSize, onGranted)
-            }
+            onRequestPermission={requestPermission}
             ws={ws}
-            outgoingProgress={outgoingProgress}
-            sessionState={sessionState}
-            permissionRequest={permissionRequest}
+            outgoingProgresses={outgoingProgresses}
+            sessionStates={sessionStates}
+            permissionRequests={permissionRequests}
             onRespondPermission={respond}
-            incomingBlob={incomingBlob}
-            incomingName={incomingName}
+            incomingTransfers={incomingTransfers}
           />
         ) : (
           <Kabutar
             ws={ws}
             onConnect={connect}
             onSendFile={sendFile}
-            outgoingProgress={outgoingProgress}
-            sessionState={sessionState}
-            incomingBlob={incomingBlob}
-            incomingName={incomingName}
+            outgoingProgresses={outgoingProgresses}
+            sessionStates={sessionStates}
+            incomingTransfers={incomingTransfers}
           />
         )}
       </main>

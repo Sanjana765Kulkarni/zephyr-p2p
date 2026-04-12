@@ -15,11 +15,11 @@ export interface PermissionRequest {
 type OnGranted = (fromId: string) => void;
 
 export function useTransfer(ws: WebSocket | null) {
-    // Receiver side: incoming request popup
-    const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | null>(null);
+    // Receiver side: incoming request popups
+    const [permissionRequests, setPermissionRequests] = useState<PermissionRequest[]>([]);
 
-    // Sender side: callback to fire when remote accepts
-    const onGrantedRef = useRef<OnGranted | null>(null);
+    // Sender side: callback map for multiple remote peers
+    const onGrantedMapRef = useRef<Map<string, OnGranted>>(new Map());
 
     useEffect(() => {
         if (!ws) return;
@@ -27,19 +27,21 @@ export function useTransfer(ws: WebSocket | null) {
             try {
                 const msg = JSON.parse(evt.data as string);
 
-                // Receiver side: show permission popup
                 if (msg.type === 'REQUEST') {
-                    setPermissionRequest({
+                    setPermissionRequests(prev => [...prev, {
                         fromId: msg.payload.fromId,
                         fromName: msg.payload.fromName,
                         fileName: msg.payload.fileName,
                         fileSize: msg.payload.fileSize,
-                    });
+                    }]);
                 }
 
-                // Sender side: peer accepted → fire callback
                 if (msg.type === 'REQUEST_ACK' && msg.payload?.status === 'accepted') {
-                    onGrantedRef.current?.(msg.payload.fromId);
+                    const cb = onGrantedMapRef.current.get(msg.payload.fromId);
+                    if (cb) {
+                        cb(msg.payload.fromId);
+                        onGrantedMapRef.current.delete(msg.payload.fromId);
+                    }
                 }
             } catch { /* ignore */ }
         };
@@ -47,20 +49,15 @@ export function useTransfer(ws: WebSocket | null) {
         return () => ws.removeEventListener('message', handler);
     }, [ws]);
 
-    /** Receiver: send permission decision */
     const respond = (req: PermissionRequest, allowed: boolean) => {
         if (!ws) return;
         ws.send(JSON.stringify({
             type: 'REQUEST_ACK',
             payload: { toId: req.fromId, status: allowed ? 'accepted' : 'denied' },
         }));
-        setPermissionRequest(null);
+        setPermissionRequests(prev => prev.filter(r => r.fromId !== req.fromId));
     };
 
-    /**
-     * Sender: send a permission request.
-     * @param onGranted called with the approving peer's id when they accept
-     */
     const requestPermission = (
         targetId: string,
         fileName: string,
@@ -68,12 +65,12 @@ export function useTransfer(ws: WebSocket | null) {
         onGranted: OnGranted,
     ) => {
         if (!ws) return;
-        onGrantedRef.current = onGranted;
+        onGrantedMapRef.current.set(targetId, onGranted);
         ws.send(JSON.stringify({
             type: 'REQUEST',
             payload: { targetId, fileName, fileSize },
         }));
     };
 
-    return { permissionRequest, respond, requestPermission };
+    return { permissionRequests, respond, requestPermission };
 }

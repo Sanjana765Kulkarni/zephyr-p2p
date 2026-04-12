@@ -9,6 +9,8 @@ import { CodeInput } from '../components/CodeInput';
 import { FileDrop } from '../components/FileDrop';
 import { TransferProgress } from '../components/TransferProgress';
 import { Mascot } from '../components/Mascot';
+import type { ZephyrSessionState } from '../protocol/zephyr';
+import type { IncomingTransfer } from '../hooks/useZephyr';
 
 const WINDOW_SECONDS = 30;
 const TTL_WINDOWS = 10;
@@ -43,25 +45,33 @@ function currentWindow(): number {
 interface KabutarProps {
     ws: WebSocket | null;
     onConnect: (targetId: string) => Promise<void>;
-    onSendFile: (file: File) => void;
-    outgoingProgress: number;
-    sessionState: string;
-    incomingBlob?: Blob | null;
-    incomingName?: string;
+    onSendFile: (targetId: string, file: File) => void;
+    outgoingProgresses: Record<string, number>;
+    sessionStates: Record<string, ZephyrSessionState>;
+    incomingTransfers: Record<string, IncomingTransfer>;
 }
 
 export const Kabutar: React.FC<KabutarProps> = ({
-    ws, onConnect, onSendFile, outgoingProgress, sessionState,
-    incomingBlob, incomingName,
+    ws, onConnect, onSendFile, outgoingProgresses, sessionStates,
+    incomingTransfers,
 }) => {
     const [myCode, setMyCode] = useState('------');
     const [expiresAt, setExpiresAt] = useState(Date.now() + TTL_MS);
     const [peerCode, setPeerCode] = useState('');
-    const [file, setFile] = useState<File | null>(null);
+    const [files, setFiles] = useState<File[]>([]);
     const [sending, setSending] = useState(false);
     const [status, setStatus] = useState<string>('');
     const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
     const secretRef = useRef<ArrayBuffer | null>(null);
+
+    // Kabutar acts as a 1:1 link, there should only be one active target ID.
+    const activeTargetId = Object.keys(sessionStates)[0] || null;
+    const sessionState = activeTargetId ? sessionStates[activeTargetId] : 'IDLE';
+    const outgoingProgress = activeTargetId ? (outgoingProgresses[activeTargetId] || 0) : 0;
+    const incomingTransfer = activeTargetId ? incomingTransfers[activeTargetId] : null;
+
+    const incomingBlob = incomingTransfer?.blob ?? null;
+    const incomingName = incomingTransfer?.meta?.name ?? '';
 
     // Maintain object URL properly to avoid browser truncation bugs on download
     useEffect(() => {
@@ -122,12 +132,14 @@ export const Kabutar: React.FC<KabutarProps> = ({
     };
 
     const handleSend = () => {
-        if (!file) return;
+        if (files.length === 0 || !activeTargetId) return;
         setSending(true);
-        onSendFile(file);
+        // Although multiple files are supported by FileDrop, ZephyrSession queueFile supports sequential.
+        // We'll queue them all on the target.
+        for (const file of files) {
+            onSendFile(activeTargetId, file);
+        }
     };
-
-    // downloadBlob removed in favor of direct href
 
     const established = sessionState === 'ESTABLISHED' || sessionState === 'TRANSFERRING';
 
@@ -164,19 +176,19 @@ export const Kabutar: React.FC<KabutarProps> = ({
             {established && (
                 <>
                     <div className="session-badge">🔒 Session established</div>
-                    <FileDrop file={file} onFile={setFile} />
+                    <FileDrop files={files} onFiles={setFiles} />
                     {!sending ? (
                         <button
                             className="send-btn"
-                            disabled={!file}
+                            disabled={files.length === 0}
                             onClick={handleSend}
                             id="kabutar-send-btn"
                         >
-                            Send file
+                            Send {files.length > 1 ? `${files.length} ` : ''}file{files.length > 1 ? 's' : ''}
                         </button>
                     ) : (
                         <TransferProgress
-                            filename={file?.name ?? ''}
+                            filename={files.length === 1 ? files[0].name : `${files.length} files`}
                             progress={outgoingProgress}
                             speedBps={0}
                             done={outgoingProgress === 100}
