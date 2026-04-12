@@ -94,6 +94,7 @@ export class ZephyrSession {
     private pendingChunks = new Map<number, PendingChunk>();
     private transferQueue: File[] = [];
     private isTransferring = false;
+    private isFileFullyQueued = false;
     private windowQueue: (() => void)[] = [];
 
     // ─── Event emitter ────────────────────────────────────────────────────────
@@ -237,6 +238,7 @@ export class ZephyrSession {
     private async sendFile(file: File) {
         if (!this.sessionKeys) throw new Error('No session keys');
         this.setState('TRANSFERRING');
+        this.isFileFullyQueued = false;
 
         const meta = await prepareFile(file);
 
@@ -283,6 +285,15 @@ export class ZephyrSession {
             this.emit('packet', packet);
             this.emit('progress', { sent: chunkIndex + 1, total: meta.totalChunks });
             chunkIndex++;
+        }
+
+        this.isFileFullyQueued = true;
+
+        // In case the last ACK arrived BEFORE isFileFullyQueued became true!
+        if (this.pendingChunks.size === 0 && this.isTransferring) {
+            this.setState('ESTABLISHED');
+            this.isTransferring = false;
+            this.processTransferQueue();
         }
     }
 
@@ -400,7 +411,7 @@ export class ZephyrSession {
             }
         }
         // All chunks acked?
-        if (this.pendingChunks.size === 0 && this.isTransferring) {
+        if (this.pendingChunks.size === 0 && this.isTransferring && this.isFileFullyQueued) {
             this.setState('ESTABLISHED');
             this.isTransferring = false;
             this.processTransferQueue();
